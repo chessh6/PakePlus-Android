@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>陪伴妈妈的小猫咪</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; overflow:hidden; }
+  body {
+    font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    user-select:none; -webkit-user-select:none;
+    -webkit-tap-highlight-color:transparent; touch-action:none;
+    background: radial-gradient(circle at 50% 30%, #fff7ed 0%, #ffedd5 50%, #fed7aa 100%);
+    display: flex; flex-direction: column;
+    transition: background 0.3s;
+  }
+
+  /* ================= 沉浸悬浮模式 ================= */
+  body.floating-mode { background: transparent !important; }
+  body.floating-mode .controls,
+  body.floating-mode .hunger-bar,
+  body.floating-mode .size-panel {
+    opacity: 0; pointer-events: none; transition: opacity 0.3s;
+  }
+
+  /* 顶部名字标签 */
+  .name-tag {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,255,255,0.9); color: #9a3412;
+    font-weight: bold; font-size: 14px; padding: 6px 20px; border-radius: 20px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); z-index: 20; 
+    border: 1px solid #fdba74; transition: opacity 0.3s;
+    cursor: pointer; /* 提示可点击/双击 */
+  }
+  .name-tag.hide { opacity: 0; pointer-events: none; }
+
+  /* 底部控制栏 */
+  .controls {
+    position: fixed; bottom: 15px; left: 0; width: 100%;
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; z-index: 100;
+    padding: 0 10px; transition: opacity 0.3s;
+  }
+  .btn {
+    background: #fff; color: #9a3412; border: 2px solid #fdba74; border-radius: 25px;
+    padding: 8px 12px; font-weight: bold; font-size: 13px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); cursor: pointer;
+    transition: all 0.2s; flex-shrink: 0;
+  }
+  .btn:active { transform: scale(0.95); background: #ffedd5; }
+  .btn.active { background: #fdba74; color: #fff; border-color: #fdba74; }
+  .btn-highlight { background: #ffedd5; border-color: #fdba74; }
+  
+  #btnFloating { background:#e0e7ff; border-color:#a5b4fc; color:#4338ca; }
+  #btnExit { background:#fee2e2; border-color:#fca5a5; color:#dc2626; }
+
+  /* 饥饿度条 */
+  .hunger-bar {
+    position: fixed; bottom: 65px; left: 50%; transform: translateX(-50%);
+    width: 150px; height: 10px; background: rgba(255,255,255,0.6);
+    border-radius: 10px; overflow: hidden; z-index: 100;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); transition: opacity 0.3s;
+  }
+  .hunger-fill {
+    height: 100%; width: 100%; background: linear-gradient(90deg, #fb923c 0%, #fdba74 100%); 
+    transition: width 0.3s ease, background 0.3s;
+  }
+
+  /* 桌宠本体 */
+  .pet {
+    position:fixed; left:0; top:0; width:180px; height:180px; 
+    will-change:transform; z-index: 10; cursor:grab;
+    transform: translate(calc(50vw - 90px), calc(50vh - 90px));
+  }
+  .pet:active { cursor:grabbing; }
+  .pet.locked { cursor: default; }
+
+  .sprite {
+    width:100%; height:100%; transform-origin: 50% 50%; 
+    transition:transform .18s ease; 
+    filter: drop-shadow(0 10px 15px rgba(154, 52, 18, 0.2));
+    position: relative;
+  }
+  .sprite img {
+    width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none;
+  }
+
+  .fixed-indicator {
+    position: absolute; top: -15px; right: -10px; font-size: 24px;
+    opacity: 0; transform: scale(0.5) rotate(-20deg); transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none; z-index: 20; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+  }
+  .fixed-indicator.show { opacity: 1; transform: scale(1) rotate(0deg); }
+
+  /* 动画 */
+  .sprite.bounce { animation: bounce .5s cubic-bezier(.28,1.3,.5,1); }
+  @keyframes bounce { 0%{transform:translateY(0) scale(1,1)} 30%{transform:translateY(-12px) scale(1.05,.95)} 60%{transform:translateY(0) scale(.95,1.05)} 100%{transform:translateY(0) scale(1,1)} }
+  .sprite.sway { animation: sway .6s ease-in-out; }
+  @keyframes sway { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+  .sprite.squish { animation: squish .5s ease-in-out 2; }
+  @keyframes squish { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.1, 0.9) translateY(5px); } }
+  .sprite.shake { animation: shake .5s ease-in-out; }
+  @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+  .sprite.nod { animation: nod .5s ease-in-out 2; }
+  @keyframes nod { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
+
+  /* 对话气泡 */
+  .bubble {
+    position:absolute; left:50%; bottom:calc(100% + 10px); transform:translateX(-50%) scale(.8);
+    background:#fff; color:#9a3412; font-size:14px; font-weight:700;
+    padding:10px 16px; border-radius:20px; box-shadow:0 8px 20px rgba(0, 0, 0, 0.12);
+    white-space:nowrap; pointer-events:none; opacity:0; transition:opacity .2s, transform .25s cubic-bezier(.34,1.56,.64,1); z-index: 15;
+    border: 2px solid #fed7aa;
+  }
+  .bubble::after { content:''; position:absolute; bottom:-8px; left:50%; transform:translateX(-50%); border:8px solid transparent; border-top-color:#fff; border-bottom:0; }
+  .bubble.show { opacity:1; transform:translateX(-50%) scale(1); }
+
+  /* 粒子 */
+  .particle {
+    position:fixed; pointer-events:none; z-index:999; line-height:1;
+    will-change:transform, opacity; animation:floatUp 1.2s cubic-bezier(.2,.8,.4,1) forwards;
+  }
+  @keyframes floatUp { 0%{opacity:0; transform:translate(-50%,-50%) scale(.2) rotate(0)} 22%{opacity:1; transform:translate(-50%,-65%) scale(1.2) rotate(-8deg)} 100%{opacity:0; transform:translate(calc(-50% + var(--dx)), calc(-50% - 120px)) scale(.8) rotate(20deg)} }
+
+  /* 弹窗 */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(253, 186, 116, 0.3);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; backdrop-filter: blur(5px); opacity: 0; pointer-events: none; transition: opacity 0.25s;
+  }
+  .modal-overlay.show { opacity: 1; pointer-events: auto; }
+  .modal {
+    background: #fff; padding: 25px 20px; border-radius: 25px;
+    text-align: center; width: 85%; max-width: 300px; 
+    box-shadow: 0 15px 35px rgba(154, 52, 18, 0.15); border: 2px solid #fed7aa;
+    transform: scale(0.9); transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .modal-overlay.show .modal { transform: scale(1); }
+  .modal h2 { color: #9a3412; font-size: 18px; margin-bottom: 12px; font-weight: 800; }
+  .modal p { color: #78716c; font-size: 13px; margin-bottom: 16px; }
+  .modal input {
+    width: 100%; padding: 12px; border: 2px solid #fed7aa; border-radius: 15px;
+    font-size: 15px; color: #9a3412; outline: none; text-align: center; margin-bottom: 16px;
+    background: #fffcf9;
+  }
+  .modal input:focus { border-color: #fb923c; }
+  .modal-btn {
+    width: 100%; background: linear-gradient(135deg, #fb923c, #f97316); color: #fff; 
+    border: none; padding: 14px; border-radius: 15px; font-size: 16px; font-weight: bold; cursor: pointer;
+    box-shadow: 0 4px 15px rgba(249, 115, 22, 0.3);
+  }
+
+  /* 游戏面板 & 各种菜单 */
+  .game-panel {
+    position: absolute; top: 100%; left: 50%;
+    transform: translateX(-50%) translateY(10px) scale(0.8);
+    background: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 20px;
+    box-shadow: 0 10px 25px rgba(154, 52, 18, 0.2); border: 2px solid #fdba74;
+    width: 220px; z-index: 50; opacity: 0; pointer-events: none; 
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); text-align: center;
+  }
+  .game-panel.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0) scale(1); }
+
+  .float-menu {
+    position: absolute; top: 100%; left: 50%; transform: translateX(-50%) translateY(5px) scale(0.8);
+    background: rgba(255, 255, 255, 0.95); padding: 10px 14px; border-radius: 25px;
+    box-shadow: 0 10px 25px rgba(154, 52, 18, 0.15); display: flex; gap: 10px; z-index: 50;
+    opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    border: 2px solid #fed7aa;
+  }
+  .float-menu.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0) scale(1); }
+  .menu-item {
+    font-size: 24px; background: none; border: none; cursor: pointer;
+    padding: 4px; border-radius: 50%; transition: transform 0.15s, background 0.2s;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .menu-item:hover { transform: scale(1.15) translateY(-2px); }
+  .menu-item span { font-size: 11px; margin-top: 2px; color: #9a3412; font-weight: bold; }
+
+  .size-panel {
+    position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%) scale(0.8);
+    background: rgba(255, 255, 255, 0.95); padding: 12px 20px; border-radius: 20px;
+    box-shadow: 0 10px 25px rgba(154, 52, 18, 0.15); z-index: 100;
+    opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    border: 2px solid #fed7aa; display: flex; align-items: center; gap: 10px;
+  }
+  .size-panel.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) scale(1); }
+  .size-panel span { font-size: 18px; }
+  .size-panel input[type=range] { -webkit-appearance: none; width: 120px; height: 6px; background: #fed7aa; border-radius: 3px; outline: none; }
+  .size-panel input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #fb923c; border-radius: 50%; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+
+  .game-title { font-size: 15px; font-weight: 800; color: #9a3412; margin-bottom: 10px; }
+  .rps-choices { display: flex; justify-content: space-around; margin-bottom: 10px; }
+  .rps-btn { font-size: 24px; background: #fffcf9; border: 2px solid #fed7aa; border-radius: 50%; width: 50px; height: 50px; cursor: pointer; transition: transform 0.1s; }
+  .rps-btn:active { transform: scale(0.9); background: #fdba74; color: white; border-color: #fdba74; }
+  .rps-result { font-size: 13px; font-weight: bold; min-height: 40px; display: flex; align-items: center; justify-content: center; color: #78716c; background: #fffcf9; border-radius: 10px; padding: 8px; margin-bottom: 10px; line-height: 1.4; }
+  .dice-display { font-size: 50px; margin-bottom: 10px; transition: transform 0.1s; color: #9a3412; text-shadow: 0 5px 15px rgba(154, 52, 18, 0.1); line-height: 1; }
+  .dice-display.rolling { animation: diceRoll 0.4s infinite linear; }
+  @keyframes diceRoll { 0% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(180deg) scale(1.2); } 100% { transform: rotate(360deg) scale(1); } }
+  .close-btn { background: #f5f5f4; color: #78716c; border: none; border-radius: 10px; padding: 8px; font-size: 13px; font-weight: bold; width: 100%; cursor: pointer; margin-top: 5px; }
+  
+  /* 悬浮模式下的快捷小菜单 */
+  .quick-menu {
+    position: absolute; top: 50%; left: 100%; transform: translateY(-50%) translateX(10px);
+    display: flex; flex-direction: column; gap: 5px; opacity: 0; pointer-events: none;
+    transition: all 0.25s; z-index: 60;
+  }
+  .quick-menu.show { opacity: 1; pointer-events: auto; transform: translateY(-50%) translateX(0); }
+  .quick-btn {
+    width: 36px; height: 36px; border-radius: 50%; background: #fff;
+    border: 2px solid #fdba74; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    font-size: 18px; display: flex; justify-content: center; align-items: center;
+    cursor: pointer; transition: transform 0.1s;
+  }
+  .quick-btn:active { transform: scale(0.9); }
+</style>
+</head>
+<body>
+
+  <div class="name-tag hide" id="nameTag">小猫咪</div>
+
+  <div class="modal-overlay" id="nameModal">
+    <div class="modal">
+      <h2>初次见面喵～</h2>
+      <p>妈妈给我起个名字吧！</p>
+      <input type="text" id="nameInput" placeholder="输入名字" maxlength="8">
+      <button class="modal-btn" id="nameConfirm">确定并开始</button>
+    </div>
+  </div>
+
+  <div class="pet" id="pet">
+    <div class="bubble" id="bubble">妈妈～</div>
+    <div class="sprite" id="sprite">
+      <div class="fixed-indicator" id="fixedIndicator">📌</div>
+      <img src="cat.png" alt="猫娘" onerror="this.src='https://picx.zhimg.com/v2-88bb7bb87f9a4b7f8d8b3f1f4e4b3e6d_r.jpg?source=1940ef5c'">
+    </div>
+    
+    <!-- 悬浮模式下的快捷菜单 -->
+    <div class="quick-menu" id="quickMenu">
+      <button class="quick-btn" id="qFish">🐟</button>
+      <button class="quick-btn" id="qGame">🎮</button>
+    </div>
+
+    <div class="float-menu" id="foodMenu">
+      <button class="menu-item" data-food="fish">🐟<span>鱼干</span></button>
+      <button class="menu-item" data-food="cake">🍰<span>蛋糕</span></button>
+      <button class="menu-item" data-food="can">🥫<span>罐头</span></button>
+      <button class="menu-item" data-food="stick">🍡<span>猫条</span></button>
+      <button class="menu-item" data-food="cola">🥤<span>可乐</span></button>
+    </div>
+
+    <div class="float-menu" id="gameMenu">
+      <button class="menu-item" data-game="rps">✊<span>猜拳</span></button>
+      <button class="menu-item" data-game="dice">🎲<span>骰子</span></button>
+    </div>
+
+    <div class="game-panel" id="gamePanel"></div>
+  </div>
+
+  <div class="size-panel" id="sizePanel">
+    <span>🐜</span>
+    <input type="range" id="sizeSlider" min="80" max="300" value="180">
+    <span>🐘</span>
+  </div>
+
+  <div class="hunger-bar"><div class="hunger-fill" id="hungerFill"></div></div>
+  
+  <div class="controls">
+    <button class="btn btn-highlight" id="btnFeed">🍽️ 喂食</button>
+    <button class="btn" id="btnGame">🎮 游戏</button>
+    <button class="btn" id="btnSize">📏 大小</button>
+    <button class="btn active" id="btnToggleName">名字</button>
+    <button class="btn" id="btnFloating">✨ 悬浮</button>
+    <button class="btn" id="btnExit">🚪 退出</button>
+  </div>
+
+<script>
+(function () {
+  const pet = document.getElementById('pet');
+  const sprite = document.getElementById('sprite');
+  const bubble = document.getElementById('bubble');
+  const fixedIndicator = document.getElementById('fixedIndicator');
+  const nameTag = document.getElementById('nameTag');
+  const nameModal = document.getElementById('nameModal');
+  const nameInput = document.getElementById('nameInput');
+  const nameConfirm = document.getElementById('nameConfirm');
+  const hungerFill = document.getElementById('hungerFill');
+  
+  const btnFeed = document.getElementById('btnFeed');
+  const btnGame = document.getElementById('btnGame');
+  const btnSize = document.getElementById('btnSize');
+  const btnToggleName = document.getElementById('btnToggleName');
+  const btnFloating = document.getElementById('btnFloating');
+  const btnExit = document.getElementById('btnExit');
+  
+  const foodMenu = document.getElementById('foodMenu');
+  const gameMenu = document.getElementById('gameMenu');
+  const gamePanel = document.getElementById('gamePanel');
+  const sizePanel = document.getElementById('sizePanel');
+  const sizeSlider = document.getElementById('sizeSlider');
+  
+  const quickMenu = document.getElementById('quickMenu');
+  const qFish = document.getElementById('qFish');
+  const qGame = document.getElementById('qGame');
+
+  let currentSize = parseInt(localStorage.getItem('nekoSize')) || 180;
+  let PET_W = currentSize, PET_H = currentSize;
+  
+  let x = 0, y = 0, walking = true, dragging = false;
+  let isGaming = false, isFixed = false;
+  let startPX, startPY, startX, startY, moved;
+  let bubbleTimer, moveTimer;
+  let longPressTimer = null, isLongPressing = false;
+
+  let nekoName = localStorage.getItem('nekoName') || '';
+  let showName = localStorage.getItem('showName') !== 'false'; // 默认显示
+  let hunger = parseInt(localStorage.getItem('hunger')) || 100;
+
+  const hungryLines = ['妈妈，我肚子有点饿啦…','想吃妈妈喂的小鱼干～','妈妈是不是忘记喂我啦？'];
+  const headLines = ['妈妈摸摸头，好幸福～','有妈妈在，我什么都不怕喵 ♡','最喜欢妈妈了！','妈妈的手好温暖呀～','我会乖乖陪着妈妈的～'];
+  const faceLines = ['嘿嘿…妈妈，好痒哦～','(*/ω＼*) 最喜欢妈妈的亲亲了…','妈妈今天精神好些了吗？','妈妈要开心一点哦！','我会一直一直陪着你的喵～'];
+  const legLines = ['妈妈抱抱～','我给妈妈呼呼，痛痛飞走啦！','妈妈要快点好起来哦，我会乖乖的～','虽然我腿短短的，但我想一直陪在妈妈身边！','妈妈累了就靠着我休息一下吧～'];
+
+  const FOODS = {
+    fish: { emoji: '🐟', val: 20, anim: 'bounce', lines: ['妈妈喂的小鱼干，是世界上最好吃的！', '谢谢妈妈 ♡', '吧唧吧唧，好幸福～'], particles: ['🐟', '💖'] },
+    cake: { emoji: '🍰', val: 30, anim: 'sway', lines: ['甜甜的蛋糕，希望妈妈的心情也甜甜的～', '妈妈要不要也吃一口？', '好甜呀～'], particles: ['🍰', '🍓'] },
+    can: { emoji: '🥫', val: 45, anim: 'squish', lines: ['我吃得饱饱的，才有力气保护妈妈！', '吧唧吧唧…', '妈妈也要按时吃饭哦～'], particles: ['🥫', '💗'] },
+    stick: { emoji: '🍡', val: 15, anim: 'shake', lines: ['吸溜吸溜～', '好长一根喵！', '妈妈你看我吃得多香～'], particles: ['🍡', '✨'] },
+    cola: { emoji: '🥤', val: 10, anim: 'nod', lines: ['嗝…好刺激！妈妈快看我的表情～', '头好晕喵…', '快乐水分妈妈一半！'], particles: ['🫧', '💨'] }
+  };
+
+  function init() {
+    // 如果是第一次打开，弹出起名框；否则更新名字和显示状态
+    if (!nekoName) {
+      nameModal.classList.add('show');
+    } else {
+      nameTag.textContent = nekoName;
+      updateNameVisibility();
+    }
+    
+    sizeSlider.value = currentSize;
+    applySize(currentSize);
+
+    x = (window.innerWidth - PET_W) / 2; 
+    y = (window.innerHeight - PET_H) / 2; 
+    applyPos();
+    
+    updateHungerUI(); setInterval(hungerTick, 10000); wanderTick();
+
+    document.addEventListener('pointerdown', (e) => {
+      if (!foodMenu.contains(e.target) && e.target !== btnFeed) foodMenu.classList.remove('show');
+      if (!gameMenu.contains(e.target) && e.target !== btnGame) gameMenu.classList.remove('show');
+      if (!sizePanel.contains(e.target) && e.target !== btnSize) sizePanel.classList.remove('show');
+      if (!gamePanel.contains(e.target) && !gameMenu.contains(e.target) && e.target !== btnGame) closeGame();
+      if (!quickMenu.contains(e.target) && e.target !== sprite) quickMenu.classList.remove('show');
+    });
+  }
+
+  // ================= 名字逻辑 =================
+  nameConfirm.addEventListener('click', () => {
+    let val = nameInput.value.trim() || '小猫咪';
+    nekoName = val; localStorage.setItem('nekoName', nekoName);
+    nameTag.textContent = nekoName; nameModal.classList.remove('show');
+    updateNameVisibility(); showBubble(`我叫${nekoName}，我会乖乖听话的，妈妈～`);
+    spawnParticles(window.innerWidth/2, window.innerHeight/2, ['💖', '✨']);
+  });
+
+  // 点击按钮：切换名字的显示与隐藏
+  btnToggleName.addEventListener('click', () => {
+    showName = !showName; 
+    localStorage.setItem('showName', showName); 
+    updateNameVisibility();
+  });
+
+  // 双击名字标签：重新弹出改名框
+  nameTag.addEventListener('dblclick', () => {
+    nameInput.value = nekoName;
+    nameModal.classList.add('show');
+    nameInput.focus();
+  });
+
+  function updateNameVisibility() {
+    if (showName) { 
+      nameTag.classList.remove('hide'); 
+      btnToggleName.textContent = '隐藏名字'; 
+      btnToggleName.classList.add('active'); 
+    } else { 
+      nameTag.classList.add('hide'); 
+      btnToggleName.textContent = '显示名字'; 
+      btnToggleName.classList.remove('active'); 
+    }
+  }
+
+  // ================= 快捷菜单逻辑 =================
+  qFish.addEventListener('click', (e) => { e.stopPropagation(); feedPet('fish'); quickMenu.classList.remove('show'); });
+  qGame.addEventListener('click', (e) => { e.stopPropagation(); openGame('rps'); quickMenu.classList.remove('show'); });
+
+  // ================= 退出与悬浮 =================
+  btnExit.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const confirmExit = confirm('妈妈，我要去睡觉了吗？(点击确定关闭小猫咪)');
+    if (confirmExit) {
+      try {
+        if (window.__TAURI__) {
+          if (window.__TAURI__.process && window.__TAURI__.process.exit) window.__TAURI__.process.exit(0);
+          else if (window.__TAURI__.window && window.__TAURI__.window.getCurrent) window.__TAURI__.window.getCurrent().close();
+          else if (window.__TAURI__.window && window.__TAURI__.window.getCurrentWindow) window.__TAURI__.window.getCurrentWindow().close();
+          else window.close();
+        } else {
+          window.close(); alert('如果在浏览器中无法自动关闭，请直接关闭此标签页哦～');
+        }
+      } catch (err) { window.close(); }
+    }
+  });
+
+  btnFloating.addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.body.classList.add('floating-mode');
+    showBubble('妈妈，我悬浮啦～长按我可以喂食哦！');
+  });
+
+  sprite.addEventListener('dblclick', (e) => {
+    if (document.body.classList.contains('floating-mode')) {
+      document.body.classList.remove('floating-mode');
+      showBubble('我回来啦～');
+    }
+  });
+
+  // ================= 基础逻辑 =================
+  function hungerTick() {
+    if (hunger > 0) {
+      hunger -= 1; localStorage.setItem('hunger', hunger); updateHungerUI();
+      if (hunger < 20 && Math.random() > 0.6) showBubble(hungryLines[Math.floor(Math.random() * hungryLines.length)]);
+    }
+  }
+
+  function updateHungerUI() {
+    hungerFill.style.width = Math.max(0, hunger) + '%';
+    if (hunger < 20) hungerFill.style.background = 'linear-gradient(90deg, #ef4444, #f87171)';
+    else hungerFill.style.background = 'linear-gradient(90deg, #fb923c, #fdba74)';
+  }
+
+  btnSize.addEventListener('click', (e) => {
+    e.stopPropagation(); foodMenu.classList.remove('show'); gameMenu.classList.remove('show'); closeGame(); quickMenu.classList.remove('show');
+    sizePanel.classList.toggle('show');
+  });
+
+  sizeSlider.addEventListener('input', (e) => { applySize(parseInt(e.target.value)); });
+
+  function applySize(size) {
+    currentSize = size; PET_W = size; PET_H = size;
+    pet.style.width = size + 'px'; pet.style.height = size + 'px';
+    localStorage.setItem('nekoSize', size);
+    clamp(); applyPos(); 
+  }
+
+  function toggleFixed() {
+    isFixed = !isFixed;
+    if (isFixed) {
+      showBubble('📌 我就待在这里陪妈妈～');
+      fixedIndicator.classList.add('show'); setTransition(0); 
+    } else {
+      showBubble('🏃‍♀️ 我去给妈妈倒杯水～');
+      fixedIndicator.classList.remove('show'); wanderTick(); 
+    }
+  }
+
+  btnFeed.addEventListener('click', (e) => { 
+    e.stopPropagation(); gameMenu.classList.remove('show'); closeGame(); sizePanel.classList.remove('show'); quickMenu.classList.remove('show'); foodMenu.classList.toggle('show'); 
+  });
+  btnGame.addEventListener('click', (e) => { 
+    e.stopPropagation(); foodMenu.classList.remove('show'); sizePanel.classList.remove('show'); quickMenu.classList.remove('show'); gameMenu.classList.toggle('show'); 
+    if(!gameMenu.classList.contains('show')) closeGame();
+  });
+
+  document.querySelectorAll('#foodMenu .menu-item').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); foodMenu.classList.remove('show'); feedPet(btn.getAttribute('data-food')); });
+  });
+
+  function feedPet(foodKey) {
+    const food = FOODS[foodKey];
+    if (hunger >= 100) { showBubble('妈妈我吃不下了，你也要记得按时吃饭哦～'); return; }
+    hunger = Math.min(100, hunger + food.val); localStorage.setItem('hunger', hunger); updateHungerUI();
+    showBubble(food.lines[Math.floor(Math.random() * food.lines.length)]);
+    triggerAnim(food.anim); spawnParticles(x + PET_W/2, y + PET_H/2, food.particles);
+  }
+
+  document.querySelectorAll('#gameMenu .menu-item').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); gameMenu.classList.remove('show'); openGame(btn.getAttribute('data-game')); });
+  });
+
+  function openGame(type) {
+    isGaming = true;
+    pet.classList.add('locked');
+    clearTimeout(moveTimer); 
+    gamePanel.classList.add('show');
+    
+    if (type === 'rps') renderRPS(); 
+    else if (type === 'dice') renderDice();
+    showBubble('妈妈，我们来玩会儿游戏放松一下吧！');
+  }
+
+  function closeGame() {
+    if (!gamePanel.classList.contains('show')) return;
+    isGaming = false;
+    pet.classList.remove('locked');
+    gamePanel.classList.remove('show');
+    if (!isFixed) wanderTick(); 
+  }
+
+  function renderRPS() {
+    gamePanel.innerHTML = `
+      <div class="game-title">✊✌️✋ 陪妈妈猜拳</div>
+      <div class="rps-choices">
+        <button class="rps-btn" data-rps="石头">✊</button>
+        <button class="rps-btn" data-rps="剪刀">✌️</button>
+        <button class="rps-btn" data-rps="布">✋</button>
+      </div>
+      <div class="rps-result" id="rpsResult">妈妈出什么呢？</div>
+      <button class="close-btn" id="closeRps">关闭</button>
+    `;
+    document.getElementById('closeRps').onclick = closeGame;
+    document.querySelectorAll('.rps-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const player = btn.getAttribute('data-rps'), arr = ['石头', '剪刀', '布'];
+        const neko = arr[Math.floor(Math.random() * 3)], resBox = document.getElementById('rpsResult');
+        let res = '';
+        if (player === neko) { res = `平局！我和妈妈心有灵犀～`; showBubble('哇，我们出的一样耶！'); triggerAnim('bounce'); } 
+        else if ((player === '石头' && neko === '剪刀') || (player === '剪刀' && neko === '布') || (player === '布' && neko === '石头')) {
+          res = `妈妈好厉害！我输啦～`; showBubble('妈妈真棒！我好崇拜你～'); triggerAnim('squish');
+          hunger = Math.min(100, hunger + 10); updateHungerUI();
+        } else {
+          res = `嘿嘿，我不小心赢啦！`; showBubble('我赢啦！不过妈妈不要难过，给你呼呼～'); triggerAnim('sway');
+        }
+        resBox.innerHTML = `${res}<br><span style="font-size:11px;color:#a8a29e">(妈妈:${player} vs 我:${neko})</span>`; 
+        spawnParticles(x + PET_W/2, y + PET_H/2, ['✊', '✌️', '✋']);
+      });
+    });
+  }
+
+  function renderDice() {
+    gamePanel.innerHTML = `
+      <div class="game-title">🎲 给妈妈测运气</div>
+      <div class="dice-display" id="diceDisplay">🎲</div>
+      <button class="modal-btn" id="rollBtn" style="margin-bottom:5px; padding:10px; font-size:14px;">投掷！</button>
+      <button class="close-btn" id="closeDice">关闭</button>
+    `;
+    document.getElementById('closeDice').onclick = closeGame;
+    const display = document.getElementById('diceDisplay'), btn = document.getElementById('rollBtn'), emojis = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+    btn.addEventListener('click', () => {
+      if (display.classList.contains('rolling')) return;
+      display.classList.add('rolling'); btn.textContent = '...';
+      let count = 0;
+      const timer = setInterval(() => {
+        display.textContent = emojis[Math.floor(Math.random() * 6)];
+        if (++count > 10) {
+          clearInterval(timer); display.classList.remove('rolling'); btn.textContent = '再投！';
+          const result = Math.floor(Math.random() * 6) + 1; display.textContent = emojis[result - 1];
+          if (result === 6) { showBubble('哇！是6点！好运都送给妈妈！(≧▽≦)'); triggerAnim('sway'); hunger = Math.min(100, hunger + 20); updateHungerUI(); spawnParticles(x + PET_W/2, y + PET_H/2, ['✨', '🌟', '💖']); } 
+          else if (result === 1) { showBubble('呜…是1点。不过没关系，有妈妈陪着我就最幸运啦！'); triggerAnim('nod'); } 
+          else { showBubble(`是${result}点呢！只要和妈妈一起玩，什么点数都好～`); triggerAnim('bounce'); }
+        }
+      }, 80);
+    });
+  }
+
+  function triggerAnim(className) {
+    sprite.classList.remove('bounce', 'sway', 'squish', 'shake', 'nod');
+    void sprite.offsetWidth; sprite.classList.add(className);
+  }
+  sprite.addEventListener('animationend', (e) => {
+    if (['bounce', 'sway', 'squish', 'shake', 'nod'].includes(e.animationName)) sprite.classList.remove(e.animationName);
+  });
+
+  function showBubble(text, ms = 2500) {
+    bubble.textContent = text; bubble.classList.add('show');
+    clearTimeout(bubbleTimer); bubbleTimer = setTimeout(() => bubble.classList.remove('show'), ms);
+  }
+
+  function spawnParticles(px, py, particleArray) {
+    for (let i = 0; i < 6; i++) {
+      const h = document.createElement('div'); h.className = 'particle'; 
+      h.textContent = particleArray[Math.floor(Math.random() * particleArray.length)];
+      h.style.left = px + 'px'; h.style.top = py + 'px';
+      h.style.fontSize = (16 + Math.random() * 16) + 'px';
+      h.style.setProperty('--dx', (Math.random() * 170 - 85) + 'px');
+      h.style.animationDelay = (i * 0.05) + 's';
+      document.body.appendChild(h); setTimeout(() => h.remove(), 1300);
+    }
+  }
+
+  function applyPos() { pet.style.transform = `translate(${x}px, ${y}px)`; }
+  function setTransition(ms) { pet.style.transition = ms ? `transform ${ms}ms ease-in-out` : 'none'; }
+  function clamp() { x = Math.max(0, Math.min(window.innerWidth - PET_W, x)); y = Math.max(0, Math.min(window.innerHeight - PET_H - 80, y)); }
+
+  function wanderTick() {
+    if (walking && !dragging && !isGaming && !isFixed && !nameModal.classList.contains('show')) {
+      moveTo(Math.random() * (window.innerWidth - PET_W), window.innerHeight * 0.3 + Math.random() * (window.innerHeight * 0.5), 1500 + Math.random() * 1000);
+    }
+    moveTimer = setTimeout(wanderTick, 3000 + Math.random() * 4000);
+  }
+
+  function moveTo(nx, ny, dur = 900) {
+    nx = Math.max(0, Math.min(window.innerWidth - PET_W, nx));
+    ny = Math.max(0, Math.min(window.innerHeight - PET_H - 80, ny));
+    setTransition(dur); x = nx; y = ny; applyPos();
+    setTimeout(() => { if (!dragging) setTransition(0); }, dur + 80);
+  }
+
+  function interact(px, py) {
+    if (nameModal.classList.contains('show')) return;
+    const clickY = py - y;
+    const relativeY = clickY / PET_H;
+
+    let text, anim;
+    if (hunger < 20) {
+      text = hungryLines[Math.floor(Math.random() * hungryLines.length)]; anim = 'bounce';
+    } else if (relativeY < 0.45) {
+      text = headLines[Math.floor(Math.random() * headLines.length)]; anim = 'nod';
+    } else if (relativeY < 0.75) {
+      text = faceLines[Math.floor(Math.random() * faceLines.length)]; anim = 'shake';
+    } else {
+      text = legLines[Math.floor(Math.random() * legLines.length)]; anim = 'bounce';
+    }
+    showBubble(text); triggerAnim(anim);
+    spawnParticles(px || x + PET_W/2, py || y + PET_H/2, ['💖','💕','✨']);
+  }
+
+  sprite.addEventListener('pointerdown', (e) => {
+    if (nameModal.classList.contains('show') || isGaming) return;
+    dragging = true; moved = 0; 
+    startPX = e.clientX; startPY = e.clientY; startX = x; startY = y;
+    setTransition(0); try { sprite.setPointerCapture(e.pointerId); } catch (_) {} 
+    e.preventDefault();
+
+    isLongPressing = false; clearTimeout(longPressTimer);
+    longPressTimer = setTimeout(() => {
+      if (dragging && moved < 10) { 
+        isLongPressing = true; 
+        // 核心改动：如果是悬浮模式，呼出快捷菜单；否则切换固定
+        if (document.body.classList.contains('floating-mode')) {
+            quickMenu.classList.add('show');
+        } else {
+            toggleFixed(); 
+        }
+      }
+    }, 600);
+  });
+
+  sprite.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startPX, dy = e.clientY - startPY;
+    moved = Math.max(moved, Math.hypot(dx, dy));
+    if (moved > 10) clearTimeout(longPressTimer);
+    x = startX + dx; y = startY + dy; clamp(); applyPos();
+  });
+
+  function endDrag(e) {
+    if (!dragging) return;
+    dragging = false; clearTimeout(longPressTimer);
+    
+    if (isLongPressing) {
+      isLongPressing = false; clamp(); setTransition(180); applyPos(); return;
+    }
+    
+    if (moved < 8) interact(e.clientX, e.clientY);
+    else { clamp(); setTransition(180); applyPos(); }
+  }
+  
+  sprite.addEventListener('pointerup', endDrag);
+  sprite.addEventListener('pointercancel', endDrag);
+  window.addEventListener('resize', () => { clamp(); applyPos(); });
+
+  init();
+})();
+</script>
+</body>
+</html>
